@@ -9,7 +9,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <thread>
 
 #include <rex/rex_app.h>
 #include <rex/ui/overlay/simple_settings_overlay.h>
@@ -31,12 +30,9 @@ class Skate3BaseApp : public rex::ReXApp {
   void OnConfigureFonts(ImFontAtlas* atlas) override;
   void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override;
   void OnPostSetup() override;
-  void OnPostLaunchModule(rex::system::XThread* thread) override;
   void OnShutdown() override;
-  void OnGuestThreadExit(rex::system::XThread* thread) override;
 
  private:
-  void StopGpuMemoryInvalidationThread();
   void InstallRecipeOverlay();
   void InstallBigDeviceAliases();
   void ToggleSimpleSettings();
@@ -44,11 +40,15 @@ class Skate3BaseApp : public rex::ReXApp {
   void ApplyGameplayCursorMode();
   void RestartGame();
   void SaveDrawFingerprintLog();
+  void LogUserMarker();
+  void LogDebugMarker();
   void ApplySelectedProfileToRuntime();
 
   static bool IsRecipeNameChar(char c);
   static std::set<std::string> DiscoverRecipeAliases(
       const std::filesystem::path& content_root);
+  static bool CreateOverlayDirectory(const std::filesystem::path& overlay_root,
+                                     std::string_view guest_path);
 
   std::filesystem::path config_path_;
   std::filesystem::path user_settings_path_;
@@ -56,6 +56,5 @@ class Skate3BaseApp : public rex::ReXApp {
   std::unique_ptr<rex::ui::SimpleSettingsDialog> simple_settings_dialog_;
   bool recipe_overlay_installed_ = false;
   bool big_device_aliases_installed_ = false;
-  std::atomic<bool> invalidate_gpu_memory_thread_running_{false};
-  std::thread invalidate_gpu_memory_thread_;
+  std::atomic<uint32_t> debug_marker_count_{0};
 };

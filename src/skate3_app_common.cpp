@@ -37,7 +37,6 @@
 #include <rex/filesystem.h>
 #include <rex/filesystem/devices/host_path_device.h>
 #include <rex/filesystem/vfs.h>
-#include <rex/graphics/graphics_system.h>
 #include <rex/input/input_system.h>
 #include <rex/kernel/xam/module.h>
 #include <rex/logging.h>
@@ -185,17 +184,22 @@ bool ConfigContainsAnyKey(const toml::table& table, std::initializer_list<std::s
   return false;
 }
 
-bool DeveloperConfigHasResolutionScaleOverride(const std::filesystem::path& config_path) {
+bool ConfigFileContainsAnyKey(const std::filesystem::path& config_path,
+                              std::initializer_list<std::string_view> keys) {
   if (config_path.empty() || !std::filesystem::exists(config_path)) {
     return false;
   }
   try {
     auto config = toml::parse_file(config_path.string());
-    return ConfigContainsAnyKey(config, {"resolution_scale", "draw_resolution_scale_x",
-                                         "draw_resolution_scale_y"});
+    return ConfigContainsAnyKey(config, keys);
   } catch (const toml::parse_error&) {
     return false;
   }
+}
+
+bool DeveloperConfigHasResolutionScaleOverride(const std::filesystem::path& config_path) {
+  return ConfigFileContainsAnyKey(config_path, {"resolution_scale", "draw_resolution_scale_x",
+                                                "draw_resolution_scale_y"});
 }
 
 constexpr int kDefaultResolutionScale = 2;
@@ -369,6 +373,14 @@ void Skate3BaseApp::OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) {
                         "Save draw fingerprint log", [this] {
                           SaveDrawFingerprintLog();
                         });
+  rex::ui::RegisterBind("bind_skate3_log_debug_marker", "F9",
+                        "Write debug marker to log", [this] {
+                          LogDebugMarker();
+                        });
+  rex::ui::RegisterBind("bind_skate3_log_user_marker", "F10",
+                        "Write marker to log", [this] {
+                          LogUserMarker();
+                        });
 }
 
 void Skate3BaseApp::OnPostSetup() {
@@ -410,48 +422,14 @@ void Skate3BaseApp::OnPostSetup() {
   }
 }
 
-void Skate3BaseApp::OnPostLaunchModule(rex::system::XThread* thread) {
-  (void)thread;
-
-  if (std::getenv("SKATE3_INVALIDATE_GPU_MEMORY_EVERY_FRAME") == nullptr) {
-    return;
-  }
-
-  auto* graphics_system =
-      static_cast<rex::graphics::GraphicsSystem*>(runtime()->graphics_system());
-  if (!graphics_system) {
-    return;
-  }
-
-  invalidate_gpu_memory_thread_running_.store(true, std::memory_order_release);
-  invalidate_gpu_memory_thread_ = std::thread([this, graphics_system]() {
-    while (invalidate_gpu_memory_thread_running_.load(
-        std::memory_order_acquire)) {
-      graphics_system->InvalidateGpuMemory();
-      std::this_thread::sleep_for(std::chrono::milliseconds(16));
-    }
-  });
-}
-
 void Skate3BaseApp::OnShutdown() {
   rex::ui::UnregisterBind("bind_skate3_menu");
   rex::ui::UnregisterBind("bind_skate3_menu_alt");
   rex::ui::UnregisterBind("bind_skate3_save_draw_fingerprints");
+  rex::ui::UnregisterBind("bind_skate3_log_debug_marker");
+  rex::ui::UnregisterBind("bind_skate3_log_user_marker");
   ApplyGameplayCursorMode();
   simple_settings_dialog_.reset();
-  StopGpuMemoryInvalidationThread();
-}
-
-void Skate3BaseApp::OnGuestThreadExit(rex::system::XThread* thread) {
-  (void)thread;
-  StopGpuMemoryInvalidationThread();
-}
-
-void Skate3BaseApp::StopGpuMemoryInvalidationThread() {
-  invalidate_gpu_memory_thread_running_.store(false, std::memory_order_release);
-  if (invalidate_gpu_memory_thread_.joinable()) {
-    invalidate_gpu_memory_thread_.join();
-  }
 }
 
 void Skate3BaseApp::ToggleSimpleSettings() {
@@ -501,10 +479,10 @@ void Skate3BaseApp::ToggleSimpleSettings() {
   };
   auto close_settings = [this]() { ApplyGameplayCursorMode(); };
   auto close_game = [this]() {
-#if REX_PLATFORM_MAC
+#if REX_PLATFORM_MAC || REX_PLATFORM_LINUX
     std::thread([]() {
       std::this_thread::sleep_for(std::chrono::seconds(10));
-      REXLOG_WARN("macOS Close Game watchdog exiting process after shutdown timeout");
+      REXLOG_WARN("Close Game watchdog exiting process after shutdown timeout");
       std::_Exit(EXIT_SUCCESS);
     }).detach();
 #endif
@@ -648,6 +626,28 @@ void Skate3BaseApp::SaveDrawFingerprintLog() {
 #endif
 }
 
+void Skate3BaseApp::LogUserMarker() {
+  const uint32_t marker = debug_marker_count_.fetch_add(1, std::memory_order_relaxed) + 1;
+  REXLOG_WARN("USER LOG MARKER #{}: F10 pressed", marker);
+}
+
+void Skate3BaseApp::LogDebugMarker() {
+  const uint32_t marker = debug_marker_count_.fetch_add(1, std::memory_order_relaxed) + 1;
+  rex::cvar::SetFlagByName("vulkan_debug_log_frame_summaries_remaining", "36000");
+  rex::cvar::SetFlagByName("vulkan_debug_frame_summary_interval_frames", "300");
+  rex::cvar::SetFlagByName("vulkan_debug_log_resolve_decisions_remaining", "10000");
+  rex::cvar::SetFlagByName("vulkan_debug_log_team_profile_background_candidates_remaining",
+                           "1000");
+  rex::cvar::SetFlagByName("vulkan_debug_log_team_profile_background_bindings_remaining",
+                           "256");
+  rex::cvar::SetFlagByName("filesystem_debug_log_fe_asset_ops_remaining", "10000");
+  rex::cvar::SetFlagByName("filesystem_debug_log_team_profile_background_remaining", "200");
+  REXLOG_WARN(
+      "USER DEBUG MARKER #{}: F9 pressed; enabled Vulkan frame summaries, resolve diagnostics, "
+      "FE asset diagnostics, and team_profile_background_0 tracing",
+      marker);
+}
+
 void Skate3BaseApp::ApplySelectedProfileToRuntime() {
   if (!runtime() || !runtime()->kernel_state() || !runtime()->kernel_state()->user_profile()) {
     return;
@@ -703,51 +703,106 @@ std::set<std::string> Skate3BaseApp::DiscoverRecipeAliases(
   return aliases;
 }
 
+bool Skate3BaseApp::CreateOverlayDirectory(
+    const std::filesystem::path& overlay_root, std::string_view guest_path) {
+  std::filesystem::path path = overlay_root;
+  size_t segment_start = 0;
+  while (segment_start < guest_path.size()) {
+    const size_t slash = guest_path.find('/', segment_start);
+    const size_t segment_end = slash == std::string_view::npos ? guest_path.size() : slash;
+    if (segment_end > segment_start) {
+      path /= std::string(guest_path.substr(segment_start, segment_end - segment_start));
+    }
+    if (slash == std::string_view::npos) {
+      break;
+    }
+    segment_start = slash + 1;
+  }
+
+  std::error_code ec;
+  std::filesystem::create_directories(path, ec);
+  return !ec;
+}
+
 void Skate3BaseApp::InstallRecipeOverlay() {
   if (recipe_overlay_installed_ || !runtime() || !runtime()->file_system()) {
     return;
   }
 
-  const auto content_root = game_data_root() / "data" / "content";
+  const auto content_root = runtime()->game_data_root() / "data" / "content";
   if (!std::filesystem::exists(content_root)) {
+    REXLOG_WARN("Skipping Skate 3 recipe VFS overlay; content root not found: {}",
+                content_root.string());
     return;
   }
 
   const auto aliases = DiscoverRecipeAliases(content_root);
   if (aliases.empty()) {
+    REXLOG_WARN("Skipping Skate 3 recipe VFS overlay; no recipe aliases found in {}",
+                content_root.string());
     return;
   }
 
-  const auto overlay_root = cache_root() / "vfs_recipe_aliases";
+  const auto overlay_root = cache_root() / "vfs_big_directory_aliases";
   std::error_code ec;
   std::filesystem::create_directories(overlay_root, ec);
   if (ec) {
+    REXLOG_WARN("Skipping Skate 3 BIG-directory VFS overlay; failed to create {}: {}",
+                overlay_root.string(), ec.message());
     return;
   }
 
   size_t created = 0;
   for (const auto& alias : aliases) {
-    std::filesystem::create_directories(overlay_root / alias, ec);
-    if (!ec) {
+    const std::string guest_path = std::string("data/content/recipe/") + alias;
+    if (CreateOverlayDirectory(overlay_root, guest_path)) {
       ++created;
     }
-    ec.clear();
   }
+
+  static constexpr std::string_view kBigDirectoryAliases[] = {
+      "data/scene",
+      "data/scene/anim",
+      "data/scene/trickguide",
+      "data/livingworld/PluginDescriptor",
+      "data/state/livingworldentities/pedestrian/plugin",
+  };
+  for (std::string_view alias : kBigDirectoryAliases) {
+    if (CreateOverlayDirectory(overlay_root, alias)) {
+      ++created;
+    }
+  }
+
   if (!created) {
+    REXLOG_WARN("Skipping Skate 3 BIG-directory VFS overlay; failed to create alias directories in {}",
+                overlay_root.string());
     return;
   }
 
   auto device = std::make_unique<rex::filesystem::HostPathDevice>(
-      "skate3recipe:", overlay_root, true);
+      "skate3bigdirs:", overlay_root, true);
   if (!device->Initialize()) {
+    REXLOG_WARN("Skipping Skate 3 BIG-directory VFS overlay; failed to initialize host device for {}",
+                overlay_root.string());
     return;
   }
 
   runtime()->file_system()->RegisterDevice(std::move(device));
   runtime()->file_system()->RegisterSymbolicLink(
       "\\Device\\Harddisk0\\Partition1\\data\\content\\recipe",
-      "skate3recipe:");
+      "skate3bigdirs:\\data\\content\\recipe");
+  runtime()->file_system()->RegisterSymbolicLink(
+      "\\Device\\Harddisk0\\Partition1\\data\\scene",
+      "skate3bigdirs:\\data\\scene");
+  runtime()->file_system()->RegisterSymbolicLink(
+      "\\Device\\Harddisk0\\Partition1\\data\\livingworld\\PluginDescriptor",
+      "skate3bigdirs:\\data\\livingworld\\PluginDescriptor");
+  runtime()->file_system()->RegisterSymbolicLink(
+      "\\Device\\Harddisk0\\Partition1\\data\\state\\livingworldentities\\pedestrian\\plugin",
+      "skate3bigdirs:\\data\\state\\livingworldentities\\pedestrian\\plugin");
   recipe_overlay_installed_ = true;
+  REXLOG_INFO("Installed Skate 3 BIG-directory VFS overlay with {} aliases from {}",
+              created, content_root.string());
 }
 
 void Skate3BaseApp::InstallBigDeviceAliases() {

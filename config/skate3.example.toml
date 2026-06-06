@@ -36,6 +36,7 @@ vblank_precise_spin_us = 150
 host_present_from_non_ui_thread = true
 presenter_strict_guest_output_backpressure = false
 presenter_strict_guest_output_backpressure_timeout_ms = 100
+vulkan_async_placeholder_max_consecutive_skips = 120
 
 present_letterbox = true
 present_safe_area_x = 100
