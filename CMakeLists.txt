@@ -66,6 +66,10 @@ set(REXSDK_DIR
 set(SKATE3_GAME_DATA_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/game"
     CACHE PATH "Path to an extracted Skate 3 retail game dump")
+if(WIN32)
+    set(REXGLUE_USE_VULKAN ON CACHE BOOL
+        "Build the Vulkan graphics backend alongside D3D12 for runtime switching" FORCE)
+endif()
 
 if(NOT APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")

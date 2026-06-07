@@ -48,7 +48,6 @@
 #include <rex/system/xam/user_profile.h>
 #include <rex/system.h>
 #include <rex/ui/keybinds.h>
-#include <rex/ui/overlay/simple_settings_overlay.h>
 
 #include <imgui.h>
 #include <toml++/toml.hpp>

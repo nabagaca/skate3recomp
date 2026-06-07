@@ -17,6 +17,7 @@ mnk_capture_mouse = false
 
 fullscreen = true
 vsync = false
+graphics_backend = "d3d12"
 video_mode_refresh_rate = 60.0
 resolution_scale = 2
 draw_resolution_scale_x = 2
