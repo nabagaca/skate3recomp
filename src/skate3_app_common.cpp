@@ -230,7 +230,7 @@ void LoadAndNormalizeSimpleSettings(const std::filesystem::path& settings_path,
   } else {
     ApplyFirstRunVideoDefaults(settings_path, developer_config_path);
   }
-  EnsureSkate3SimpleSettingsConfig(settings_path);
+  rex::ui::EnsureSimpleSettingsConfig(settings_path);
 }
 
 std::filesystem::path ResolveRuntimeGameDataRoot(const rex::PathConfig& paths) {
@@ -509,7 +509,7 @@ void Skate3BaseApp::ToggleSimpleSettings() {
   };
   auto restart_game = [this]() { RestartGame(); };
   simple_settings_dialog_ =
-      std::make_unique<Skate3SimpleSettingsDialog>(
+      std::make_unique<rex::ui::SimpleSettingsDialog>(
           imgui_drawer(), user_settings_path_, std::move(load_profiles), std::move(save_profile),
           std::move(close_settings), std::move(close_game), std::move(restart_game));
   ApplySettingsCursorMode();

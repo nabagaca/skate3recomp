@@ -11,8 +11,7 @@
 #include <string>
 
 #include <rex/rex_app.h>
-
-#include "skate3_simple_settings_dialog.h"
+#include <rex/ui/overlay/simple_settings_overlay.h>
 
 namespace rex::ui {
 class ImGuiDrawer;
@@ -54,7 +53,7 @@ class Skate3BaseApp : public rex::ReXApp {
   std::filesystem::path config_path_;
   std::filesystem::path user_settings_path_;
   std::filesystem::path profiles_path_;
-  std::unique_ptr<Skate3SimpleSettingsDialog> simple_settings_dialog_;
+  std::unique_ptr<rex::ui::SimpleSettingsDialog> simple_settings_dialog_;
   bool recipe_overlay_installed_ = false;
   bool big_device_aliases_installed_ = false;
   std::atomic<uint32_t> debug_marker_count_{0};
